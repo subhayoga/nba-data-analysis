@@ -1,0 +1,281 @@
+---
+title: "NBA Free throws"
+author: "Subha Yoganandan"
+date: "30/01/2020"
+output: html_document
+---
+
+# Data Analysis with R Markdown
+
+The NBA free throws dataset contains information about free throws per period for the regular season and the playoffs. It also contains data about when the free throw was taken, who attempted it and whether it was succesful or not.
+
+```{r setup, include = FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(plotly)
+library(devtools)
+library(roxygen2)
+
+setwd("D:/Subha/Projects/mango/coding-test-R")
+free_throws <- read.csv("free_throws.csv",header = TRUE, stringsAsFactors = FALSE)
+```
+
+### Understanding the data
+
+We take a quick look into the dataset's top rows:
+
+```{r}
+head(free_throws) %>% 
+  kable() %>% 
+  kable_styling(latex_options = "scale_down")
+```
+
+### Dimension of the dataset
+
+```{r}
+dim(free_throws) %>% 
+  as.data.frame() %>% 
+  mutate(type=c("rows","cols")) %>% 
+  kable() %>% 
+  kable_styling(latex_options = "scale_down",full_width = FALSE,position = "left")
+```
+
+The dataset has 618019 rows and 11 columns
+
+### Number of unique values in each column
+
+```{r}
+free_throws %>% 
+  summarise_all(funs(n_distinct(.))) %>% 
+  kable() %>% 
+  kable_styling(latex_options = "scale_down")
+```
+
+We can see that: 
+
+* There are 12874 unique games in this dataset 
+* They are played within 10 seasons by 1098 players 
+* The data contains 2 playoff types (regular and playoffs)
+
+### Checking if there any missing values?
+
+```{r}
+colSums(is.na(free_throws)) %>% 
+  kable() %>% 
+  kable_styling(latex_options = "scale_down",full_width = FALSE,position = "left")
+```
+
+The dataset does not have any missing data.
+
+### Exploratory Data Analysis
+
+### How many games do we have per season / playoff?
+
+```{r fig.width=10, fig.height=6}
+p <- free_throws %>% 
+  group_by(season,playoffs) %>% 
+  summarise(num_games = n_distinct(game_id)) %>% 
+  ungroup() %>% 
+  ggplot(aes(season,num_games,group=1)) +
+  geom_bar(width = 0.6,stat="identity",color="black",alpha=0.5) +
+  facet_grid(playoffs~.,scales="free") +
+  ggtitle("Number of games per season / playoffs") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplotly(p)
+
+```
+
+
+The number of games during playoffs and regular seem to vary slightly throughout the seasons. However during 2011-2012 there is a major decline in regular games. With the help of a quick google search, we can find that this is due to the NBA lock out. More details available in this [link](https://en.wikipedia.org/wiki/2011_NBA_lockout).
+
+
+### What is the total number of shots per season / playoffs?
+
+```{r fig.width=10, fig.height=6}
+p <- free_throws %>% 
+  group_by(season, playoffs) %>% 
+  summarise(num_shots = n()) %>% 
+  ungroup() %>% 
+  ggplot(aes(season,num_shots)) +
+  geom_bar(width = 0.6,stat="identity",color="black",alpha=0.5) +
+  facet_grid(playoffs~.,scales = "free") +
+  ggtitle("Total number of shots per season / playoffs") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplotly(p)
+
+```
+
+The above graph shows that the total number of shots are representative of number of games with the obvious drop in 2011. Let's dive deeper in what successful shots look like later.
+
+### What is the average number of throws per season / playoffs?
+
+```{r fig.width=10, fig.height=5}
+p <- free_throws %>% 
+  group_by(season,playoffs) %>% 
+  summarise(total_shots=n(),num_games = n_distinct(game_id)) %>% 
+  ungroup() %>% 
+  mutate(avg_throws=total_shots/num_games) %>% 
+  ggplot(aes(season,avg_throws,fill=playoffs)) +
+  geom_bar(width = 0.7,stat="identity", color="black", position=position_dodge()) +
+  scale_fill_manual(values=c('#999999','#E69F00')) +
+  scale_y_continuous(breaks=seq(0, 60, by = 5)) +
+  ggtitle("Average throws per season / playoffs") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position="bottom")
+
+ggplotly(p)
+
+```
+
+The average throws of regular games are slightly lower than playoffs throughout the seasons. Also it seems to be declining from 2006 to 2012.
+
+
+### What is the free throw success percentage per season/playoffs
+
+```{r fig.width=10, fig.height=5}
+p <- free_throws %>% 
+  group_by(season,playoffs) %>% 
+  summarise(total_shots=n(),shots_made = sum(shot_made)) %>% 
+  ungroup() %>% 
+  mutate(success_percent=shots_made/total_shots*100) %>% 
+  ggplot(aes(season,success_percent,fill=playoffs)) +
+  geom_bar(width = 0.7,stat="identity", color="black", position=position_dodge()) +
+  scale_fill_manual(values=c('#999999','#E69F00')) +
+  coord_cartesian(ylim=c(71,80)) +
+  ggtitle("Free throws success % per season / playoffs") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position="bottom")
+
+ggplotly(p)
+
+```
+
+From the above graph we can see that success percent in playoffs slowly increase from 2006 to 2010 and decrease in the later years. Success percentage from regular games are higher in the earlier years and reduce in the later years.
+In the 2014-2015 playoffs have drastically low success percentage.
+
+*Note: The above graph has been zoomed in to look closely. As it is chopped off in the top 70% to 80%, we will keep in mind that the difference might not be as large as it seems.*
+
+
+### How does distribution of success percentage look like?
+
+```{r fig.width=10, fig.height=6}
+p <- free_throws %>% 
+  group_by(player) %>% 
+  summarise(total_shots=n(),shots_made = sum(shot_made)) %>% 
+  ungroup() %>% 
+  mutate(success_percent=as.numeric(shots_made/total_shots*100)) %>% 
+  ggplot(aes(success_percent)) +   
+  geom_histogram(bins = 50,color="black",alpha=0.5) +
+  geom_vline(aes(xintercept=mean(success_percent)),color="red", linetype="dashed", size=1) +
+  geom_text(aes(x=mean(success_percent),y=0,label=round(mean(success_percent))),angle=90,vjust=-0.4, hjust=0)
+
+ggplotly(p)
+
+```
+
+The distribution is has a left skew with mean percentage around 71% success
+
+### Who are the players with highest percent of success per season?
+
+```{r fig.width=10, fig.height=5}
+free_throws %>% 
+  group_by(season,player) %>% 
+  summarise(total_shots=n(),shots_made = sum(shot_made)) %>% 
+  ungroup() %>% 
+  mutate(success_percent=shots_made/total_shots*100) %>% 
+  filter(total_shots>=125) %>% 
+  arrange(season,desc(success_percent)) %>% 
+  group_by(season) %>% 
+  top_n(1) %>% 
+  ungroup() %>% 
+  kable() %>% 
+  kable_styling(latex_options = "scale_down",full_width = FALSE,position = "left")
+```
+
+For the above graph a threshold of 125 free throws attempted was used. This was adopted as a good threshold value after referring to this [link](https://en.wikipedia.org/wiki/List_of_National_Basketball_Association_annual_free_throw_percentage_leaders)
+
+### Game period and total shots
+
+```{r, fig.width=10,fig.height=6}
+p <- free_throws %>% 
+  group_by(season,period,playoffs) %>% 
+  summarise(total_shots=n(),shots_made = sum(shot_made)) %>% 
+  ungroup() %>% 
+  #filter(period<=4) %>% 
+  mutate(success_percent=shots_made/total_shots*100,
+         period=as.factor(period)) %>% 
+  ggplot(aes(season,total_shots,group=period)) +
+  geom_line(aes(color=period)) +
+  facet_grid(playoffs~.,scales = "free") +
+  ggtitle("Game Periods and success percentages") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position="bottom")
+
+ggplotly(p)
+```
+
+There are more number of shots taken in the 4th period than any other period.
+
+### But are they really succesful?
+
+```{r, fig.width=10,fig.height=6}
+p <- free_throws %>% 
+  group_by(season,period,playoffs) %>% 
+  summarise(total_shots=n(),shots_made = sum(shot_made)) %>% 
+  ungroup() %>% 
+  filter(period<=4) %>% 
+  mutate(success_percent=shots_made/total_shots*100,
+         period=as.factor(period)) %>% 
+  ggplot(aes(season,success_percent,group=period)) +
+  geom_line(aes(color=period)) +
+  facet_grid(playoffs~.,scales = "free") +
+  ggtitle("Game Periods and success percentages") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position="bottom")
+
+ggplotly(p)
+```
+
+However most successful throws happens during the third period for regulars. Success is random across all 4 periods in playoffs.
+
+### Does time impact success percentages?
+
+```{r, fig.width=10,fig.height=6}
+p <- free_throws %>% 
+  separate(time,c("minute","seconds"),":") %>% 
+  mutate(minute=as.integer(minute)) %>% 
+  filter(period<=4) %>% 
+  mutate(minute=as.factor(minute)) %>% 
+  group_by(minute) %>% 
+  summarise(total_shots=n(),shots_made = sum(shot_made)) %>% 
+  ungroup() %>% 
+  mutate(success_percent=shots_made/total_shots*100) %>% 
+  ggplot(aes(minute,success_percent)) +
+  geom_bar(width = 0.7,stat="identity", color="black",alpha=0.5) +
+  coord_cartesian(ylim=c(72,80)) +
+  ggtitle("Minute of play vs success percentages") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position="bottom")
+
+ggplotly(p)
+```
+
+Note: The spike in the 12th minute is due to lesser number of throws thereby skewing the success percentage.
+If we ignore the 12th minute, we can see success percentages reduce after the 8th minute.
+
+
+### Summary of analysis
+
+To summarise all of the above analysis:
+
+* There are 12874 games within 10 seasons by 1098 players 
+* The number of games during 2011-2012 has a major decline in regular games due to the NBA lock out.
+* The average throws of regular games are slightly lower than playoffs throughout the seasons. Also it seems to be declining from 2006 to 2012.
+* The success percent in playoffs slowly increase from 2006 to 2010 and decrease in the later years. Success percentage from regular games are higher in the earlier years and reduce in the later years.
+* In the 2014-2015 season, playoffs have drastically low success percentage.
+* The overall free throws success percentage distribution has a left skew with mean percentage around 71%
+* The top 3 most succesful free throw players were from 2006 to 2009: Kyle Korver, Peja Stojakovic and Jose Calderon. * There are more number of shots taken in the 4th period than any other period.
+* However most successful throws happens during the third period for regulars. Success is random across all 4 periods in playoffs.
+* Success percentages reduce after the 8th minute.
+
